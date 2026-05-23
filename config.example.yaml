@@ -1,0 +1,20 @@
+# driftwatch example configuration
+#
+# Copy this file to config.yaml and adjust values for your environment.
+
+# watch_paths: list of absolute file paths to monitor for changes.
+watch_paths:
+  - /etc/myapp/settings.yaml
+  - /etc/myapp/secrets.env
+  - /etc/nginx/nginx.conf
+
+# webhook_url: HTTP(S) endpoint that receives POST notifications on drift.
+webhook_url: https://hooks.example.com/driftwatch
+
+# poll_interval: how frequently driftwatch checks each file.
+# Accepts Go duration strings: 5s, 1m, 2h, etc.  Default: 30s
+poll_interval: 30s
+
+# log_level: verbosity of structured log output.
+# One of: debug, info, warn, error.  Default: info
+log_level: info
