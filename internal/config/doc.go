@@ -8,6 +8,11 @@
 //	poll_interval: (duration, optional) how often to check files; default 30s
 //	log_level:     (string, optional)   logging verbosity; default "info"
 //
+// Valid log_level values are: "debug", "info", "warn", "error".
+//
+// The poll_interval field accepts Go duration strings such as "10s", "1m",
+// or "2m30s". Values below 1s are rejected to prevent excessive polling.
+//
 // Example:
 //
 //	watch_paths:
