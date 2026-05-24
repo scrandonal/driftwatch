@@ -1,14 +1,13 @@
-// Package ratelimit implements a simple token-bucket rate limiter for
-// controlling the frequency of outbound webhook alerts in driftwatch.
+// Package ratelimit provides a simple token-bucket style rate limiter
+// used to throttle outgoing webhook notifications.
 //
-// A Limiter is created with a maximum number of allowed events and a
-// refill window. Each call to Allow consumes one token; once tokens are
-// exhausted the limiter returns false until the window elapses and the
-// bucket is replenished to its maximum capacity.
+// A Limiter is created with a maximum number of events allowed per time
+// window. Each call to Allow consumes one token; tokens are refilled
+// automatically once the window elapses.
 //
 // Example usage:
 //
-//	limiter := ratelimit.New(10, time.Minute)
+//	limiter := ratelimit.New(5, time.Minute)
 //	if limiter.Allow() {
 //		// send alert
 //	}
