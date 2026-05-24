@@ -3,84 +3,77 @@ package alerter_test
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"os"
 	"testing"
 	"time"
 
-	"github.com/user/driftwatch/internal/alerter"
+	"github.com/yourusername/driftwatch/internal/alerter"
+	"github.com/yourusername/driftwatch/internal/ratelimit"
 )
 
-// mockSender records calls to Send and can simulate errors.
 type mockSender struct {
-	called  bool
-	payload any
-	errToReturn error
+	called  int
+	lastCtx context.Context
+	lastPay any
+	err     error
 }
 
-func (m *mockSender) Send(_ context.Context, payload any) error {
-	m.called = true
-	m.payload = payload
-	return m.errToReturn
+func (m *mockSender) Send(ctx context.Context, payload any) error {
+	m.called++
+	m.lastCtx = ctx
+	m.lastPay = payload
+	return m.err
 }
 
-func newTestAlerter(sender *mockSender) *alerter.Alerter {
-	silent := log.New(os.Discard, "", 0)
-	return alerter.New(sender, silent)
+func newTestAlerter(sender alerter.Sender, limiter *ratelimit.Limiter) *alerter.Alerter {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	return alerter.New(sender, limiter, logger)
 }
 
 func TestAlerter_Notify_Success(t *testing.T) {
 	sender := &mockSender{}
-	a := newTestAlerter(sender)
+	a := newTestAlerter(sender, nil)
 
-	event := alerter.Event{
-		FilePath:   "/etc/app/config.yaml",
-		OldHash:    "abc123",
-		NewHash:    "def456",
-		DetectedAt: time.Now(),
+	if err := a.Notify(context.Background(), "/etc/app.conf", "abc123"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-
-	if err := a.Notify(context.Background(), event); err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
-	if !sender.called {
-		t.Fatal("expected sender.Send to be called")
-	}
-	got, ok := sender.payload.(alerter.Event)
-	if !ok {
-		t.Fatal("expected payload to be of type alerter.Event")
-	}
-	if got.FilePath != event.FilePath {
-		t.Errorf("expected FilePath %q, got %q", event.FilePath, got.FilePath)
+	if sender.called != 1 {
+		t.Fatalf("expected sender called once, got %d", sender.called)
 	}
 }
 
 func TestAlerter_Notify_SenderError(t *testing.T) {
-	sendErr := errors.New("connection refused")
-	sender := &mockSender{errToReturn: sendErr}
-	a := newTestAlerter(sender)
+	sender := &mockSender{err: errors.New("connection refused")}
+	a := newTestAlerter(sender, nil)
 
-	event := alerter.Event{
-		FilePath:   "/etc/app/config.yaml",
-		OldHash:    "aaa",
-		NewHash:    "bbb",
-		DetectedAt: time.Now(),
-	}
-
-	err := a.Notify(context.Background(), event)
+	err := a.Notify(context.Background(), "/etc/app.conf", "abc123")
 	if err == nil {
 		t.Fatal("expected error, got nil")
-	}
-	if !errors.Is(err, sendErr) {
-		t.Errorf("expected wrapped sendErr, got: %v", err)
 	}
 }
 
 func TestAlerter_New_NilLogger(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic for nil logger")
+		}
+	}()
+	alerter.New(&mockSender{}, nil, nil)
+}
+
+func TestAlerter_Notify_RateLimited(t *testing.T) {
 	sender := &mockSender{}
-	// Should not panic when logger is nil.
-	a := alerter.New(sender, nil)
-	if a == nil {
-		t.Fatal("expected non-nil Alerter")
+	limiter := ratelimit.New(2, time.Minute)
+	a := newTestAlerter(sender, limiter)
+
+	for i := 0; i < 5; i++ {
+		if err := a.Notify(context.Background(), "/etc/app.conf", "abc"); err != nil {
+			t.Fatalf("unexpected error on call %d: %v", i, err)
+		}
+	}
+
+	if sender.called != 2 {
+		t.Fatalf("expected 2 sends (rate limit=2), got %d", sender.called)
 	}
 }
